@@ -17,48 +17,53 @@ API_ENDPOINT = f'http://{BEARIOT_IP}:{BEARIOT_PORT}/api/interfaces/update'  # �
 
 SSID = 'bi2sb2te3'  # กำหนด SSID Wifi
 PASSWORD = '94dda6f6'  # กำหนด Password Wifi
+MAX_WIFI_RETRIES = 10  # กำหนดจำนวนครั้งสูงสุดในการทดลองเชื่อมต่อ Wi-Fi
 
 # เชื่อมต่อ WIFI
-def connect_wifi(ssid, password, max_retries=10):
+def connect_wifi(ssid, password):
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
     
-    # พยายามเชื่อมต่อ Wi-Fi
     retry_count = 0
-    if not wlan.isconnected():
-        print("Connecting to Wi-Fi...")
-        wlan.connect(ssid, password)
-
-    # ลองเชื่อมต่อหลายครั้งจนสำเร็จหรือเกินจำนวนครั้งที่กำหนด
-    while not wlan.isconnected() and retry_count < max_retries:
-        time.sleep(2)
+    while retry_count < MAX_WIFI_RETRIES:
+        try:
+            if not wlan.isconnected():
+                print(f"Connecting to Wi-Fi... (Retry {retry_count+1})")
+                wlan.connect(ssid, password)
+                
+                for _ in range(10):  # Check connection status for 10 seconds
+                    if wlan.isconnected():
+                        print("Connected to Wi-Fi:", wlan.ifconfig())
+                        return True  # Return True when connected
+                    time.sleep(1)
+                
+                print(f"Retrying Wi-Fi connection... (Attempt {retry_count+1})")
+            else:
+                print("Already connected to Wi-Fi:", wlan.ifconfig())
+                return True  # Return True if already connected
+            
+        except OSError as e:
+            print(f"Wi-Fi connection error: {e}")
+            wlan.active(False)  # Disable the Wi-Fi interface
+            time.sleep(1)  # Wait 1 second before retrying
+            wlan.active(True)  # Re-enable the Wi-Fi interface
+        
         retry_count += 1
-        print(f"Waiting for connection... ({retry_count}/{max_retries})")
+        time.sleep(5)  # Wait 5 seconds before retrying
     
-    if wlan.isconnected():
-        print("Connected to Wi-Fi:", wlan.ifconfig())
-        return True
-    else:
-        print("Failed to connect to Wi-Fi.")
-        return False
+    print("Failed to connect to Wi-Fi after retries.")
+    return False  # Return False if unable to connect after retries
 
 # ตรวจสอบการเชื่อมต่อ WIFI และเชื่อมต่อใหม่ถ้าหลุด
 def ensure_wifi_connected(ssid, password):
     wlan = network.WLAN(network.STA_IF)
-    
+
     if not wlan.isconnected():
         print("Wi-Fi disconnected, reconnecting...")
         wlan.active(False)
         time.sleep(2)
         wlan.active(True)
-        
-        # ลองเชื่อมต่อใหม่
-        success = connect_wifi(ssid, password)
-        
-        if not success:
-            print("Wi-Fi reconnect failed. Retrying after delay...")
-            time.sleep(5)  # รอซักครู่ก่อนลองอีกครั้ง
-            connect_wifi(ssid, password)
+        return connect_wifi(ssid, password)
 
 # อ่านค่าอุณหภูมิ
 def read_temperature():
@@ -126,5 +131,4 @@ def main():
     except KeyboardInterrupt:
         print("Test stopped by user")
 
-if __name__ == "__main__":
-    main()
+main()
