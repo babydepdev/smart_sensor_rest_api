@@ -1,22 +1,22 @@
 import urequests as requests
 import ujson as json
 import utime as time
-from machine import RTC, ADC
+from machine import RTC, ADC, Pin
 import gc
 import network
+import dht
 
-adc = ADC(26)
 rtc = RTC()
 
-# กำหนดค่า
-SITE_ID = 'KMe45f01d94cbf'  # กำหนด Site ID
+# Constant
+SITE_ID = 'KMac23a1e6aa8b'  # กำหนด Site ID
 DEVICE_ID = 2  # กำหนด Device ID
-BEARIOT_IP = '172.20.10.4'  # กำหนด Beariot IP
+BEARIOT_IP = '172.20.10.2'  # กำหนด Beariot IP
 BEARIOT_PORT = 3300  # กำหนด PORT
 API_ENDPOINT = f'http://{BEARIOT_IP}:{BEARIOT_PORT}/api/interfaces/update'  # กำหนด Endpoint ที่จะส่งข้อมูล
 
-SSID = 'bi2sb2te3'  # กำหนด SSID Wifi
-PASSWORD = '94dda6f6'  # กำหนด Password Wifi
+SSID = 'babydev'  # กำหนด SSID Wifi
+PASSWORD = 'weangkom'  # กำหนด Password Wifi
 MAX_WIFI_RETRIES = 10  # กำหนดจำนวนครั้งสูงสุดในการทดลองเชื่อมต่อ Wi-Fi
 
 # เชื่อมต่อ WIFI
@@ -66,21 +66,21 @@ def ensure_wifi_connected(ssid, password):
         return connect_wifi(ssid, password)
 
 # อ่านค่าอุณหภูมิ
-def read_temperature():
-    raw_value = adc.read_u16()
-    conversion_factor = 3.3 / 65535
-    convert_voltage = raw_value * conversion_factor
-    voltage = convert_voltage * 100
-    temperature_c = voltage
-    return temperature_c
+def readDht22():
+    dht_sensor = dht.DHT22(machine.Pin(15))
+    dht_sensor.measure()
+    temperature = dht_sensor.temperature()
+    humidity = dht_sensor.humidity()
+    return {"temperature":temperature,"humidity":humidity}      
+
 
 # สร้าง Payload เตรียมส่งข้อมูล
-def generate_payload(value):
+def generate_payload(temp, humid):
     current_time = rtc.datetime()
     iso_format = '{}-{:02d}-{:02d}T{:02d}:{:02d}:{:02d}.{:06d}+00:00'.format(
         current_time[0], current_time[1], current_time[2],
         current_time[4], current_time[5], current_time[6], current_time[7])
-    print(iso_format)
+    #print(iso_format)
 
     return {
         "siteID": SITE_ID,
@@ -90,8 +90,15 @@ def generate_payload(value):
         "connection": "REST",
         "tagObj": [{
             "status": True,
-            "label": "rest_api",
-            "value": value,
+            "label": "temperature_restApi",
+            "value": temp,
+            "record": True,
+            "update": "All",
+        },
+        {
+            "status": True,
+            "label": "humidity_restApi",
+            "value": humid,
             "record": True,
             "update": "All",
         }]
@@ -104,7 +111,7 @@ def send_data(payload):
         response.close()
         
         if response.status_code == 200:
-            print(f"Data sent successfully: {payload['tagObj'][0]['value']}")
+            print(f"Data sent successfully: Temp : {payload['tagObj'][0]['value']} Humid : {payload['tagObj'][1]['value']}")
         else:
             print(f"Failed to send data. Status code: {response.status_code}")
             print(f"Response: {response.text}")
@@ -122,13 +129,15 @@ def main():
 
     try:
         while True:
-            ensure_wifi_connected(SSID, PASSWORD)  # ตรวจสอบการเชื่อมต่อ Wi-Fi ในทุกลูป
-            value = read_temperature()
-            payload = generate_payload(value)
+            ensure_wifi_connected(SSID, PASSWORD)
+            dht22 = readDht22()
+            payload = generate_payload(dht22["temperature"],dht22["humidity"])
             send_data(payload)
             gc.collect()
-            time.sleep(5)
+            time.sleep(1.1)
     except KeyboardInterrupt:
         print("Test stopped by user")
 
 main()
+
+
